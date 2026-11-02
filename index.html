@@ -1,1 +1,340 @@
-<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>記帳App</title><style>body{font-family:sans-serif;max-width:700px;margin:auto;padding:16px}input,select,button{width:100%;padding:10px;margin:6px 0}.card{border:1px solid #ddd;padding:12px;border-radius:8px;margin:10px 0}</style></head><body><h2>簡易記帳</h2><div class=card><input id=amt type=number placeholder=金額><select id=cat><option>飲食</option><option>交通</option><option>娛樂</option><option>生活</option><option>其他</option></select><input id=note placeholder=備註><button onclick=add()>新增支出</button></div><div class=card><h3>統計</h3><div id=stats></div></div><div class=card><h3>紀錄</h3><div id=list></div></div><script>let d=JSON.parse(localStorage.expenses||'[]');function add(){let a=+amt.value;if(!a)return;d.push({amt:a,cat:cat.value,note:note.value,date:new Date().toISOString()});localStorage.expenses=JSON.stringify(d);amt.value='';note.value='';render()}function render(){let t=new Date();let day=0,week=0,month=0;list.innerHTML='';d.slice().reverse().forEach(x=>{let dx=new Date(x.date);if(dx.toDateString()==t.toDateString())day+=x.amt;let diff=(t-dx)/86400000;if(diff<7)week+=x.amt;if(dx.getMonth()==t.getMonth()&&dx.getFullYear()==t.getFullYear())month+=x.amt;list.innerHTML+=`<div>${dx.toLocaleDateString()} ${x.cat} $${x.amt} ${x.note}</div>`});stats.innerHTML=`今日:${day}<br>本週:${week}<br>本月:${month}`;}render();</script></body></html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>個人記帳</title>
+
+<style>
+:root{
+ --bg:#f5f5f7;
+ --card:#fff;
+ --text:#111;
+ --primary:#007aff;
+ --danger:#ff3b30;
+}
+
+@media (prefers-color-scheme: dark){
+:root{
+ --bg:#000;
+ --card:#1c1c1e;
+ --text:#fff;
+}
+}
+
+body{
+ margin:0;
+ padding:16px;
+ font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+ background:var(--bg);
+ color:var(--text);
+}
+
+h1{
+ text-align:center;
+}
+
+.card{
+ background:var(--card);
+ padding:15px;
+ border-radius:12px;
+ margin-bottom:15px;
+}
+
+input,select{
+ width:100%;
+ padding:12px;
+ margin-top:8px;
+ margin-bottom:8px;
+ border-radius:8px;
+ border:1px solid #ccc;
+ box-sizing:border-box;
+}
+
+button{
+ border:none;
+ padding:12px;
+ border-radius:10px;
+ cursor:pointer;
+}
+
+.primary{
+ background:var(--primary);
+ color:white;
+ width:100%;
+}
+
+.edit{
+ background:#ff9500;
+ color:white;
+}
+
+.delete{
+ background:var(--danger);
+ color:white;
+}
+
+.row{
+ display:flex;
+ gap:10px;
+ flex-wrap:wrap;
+}
+
+.row button{
+ flex:1;
+}
+
+.record{
+ border-top:1px solid #ddd;
+ padding:10px 0;
+}
+
+.money{
+ font-size:20px;
+ font-weight:bold;
+}
+
+.stat{
+ margin:6px 0;
+}
+
+.small{
+ font-size:12px;
+ opacity:0.7;
+}
+</style>
+</head>
+
+<body>
+
+<h1>💰 個人記帳</h1>
+
+<div class="card">
+<h3>新增紀錄</h3>
+
+<select id="type">
+<option value="expense">支出</option>
+<option value="income">收入</option>
+</select>
+
+<input id="amount" type="number" placeholder="金額">
+
+<select id="category">
+<option>飲食</option>
+<option>交通</option>
+<option>娛樂</option>
+<option>購物</option>
+<option>居家</option>
+<option>投資</option>
+<option>其他</option>
+</select>
+
+<input id="note" placeholder="備註">
+
+<button class="primary" onclick="saveRecord()">儲存</button>
+</div>
+
+<div class="card">
+<h3>搜尋</h3>
+<input id="search" placeholder="輸入關鍵字" oninput="render()">
+</div>
+
+<div class="card">
+<h3>統計</h3>
+<div id="stats"></div>
+</div>
+
+<div class="card">
+<h3>分類統計</h3>
+<div id="categoryStats"></div>
+</div>
+
+<div class="card">
+<button class="primary" onclick="exportCSV()">匯出CSV</button>
+</div>
+
+<div class="card">
+<h3>紀錄列表</h3>
+<div id="records"></div>
+</div>
+
+<script>
+
+let editId=null;
+
+let data=JSON.parse(localStorage.getItem("expenses")||"[]");
+
+function saveData(){
+ localStorage.setItem("expenses",JSON.stringify(data));
+}
+
+function saveRecord(){
+
+ let amount=parseFloat(document.getElementById("amount").value);
+
+ if(!amount){
+   alert("請輸入金額");
+   return;
+ }
+
+ let item={
+   id:editId ?? Date.now(),
+   type:document.getElementById("type").value,
+   amount,
+   category:document.getElementById("category").value,
+   note:document.getElementById("note").value,
+   date:new Date().toISOString()
+ };
+
+ if(editId){
+   data=data.map(x=>x.id===editId?item:x);
+   editId=null;
+ }
+ else{
+   data.push(item);
+ }
+
+ saveData();
+
+ document.getElementById("amount").value="";
+ document.getElementById("note").value="";
+
+ render();
+}
+
+function editRecord(id){
+
+ let r=data.find(x=>x.id===id);
+
+ editId=id;
+
+ document.getElementById("type").value=r.type;
+ document.getElementById("amount").value=r.amount;
+ document.getElementById("category").value=r.category;
+ document.getElementById("note").value=r.note;
+
+ window.scrollTo({
+   top:0,
+   behavior:"smooth"
+ });
+}
+
+function deleteRecord(id){
+
+ if(!confirm("確定刪除？")) return;
+
+ data=data.filter(x=>x.id!==id);
+
+ saveData();
+
+ render();
+}
+
+function render(){
+
+ let keyword=document.getElementById("search").value.toLowerCase();
+
+ let list=data.filter(x=>
+   x.note.toLowerCase().includes(keyword)
+ );
+
+ let today=0;
+ let week=0;
+ let month=0;
+
+ let categoryMap={};
+
+ let html="";
+
+ let now=new Date();
+
+ list.slice().reverse().forEach(r=>{
+
+   let d=new Date(r.date);
+
+   let value=r.type==="expense" ? -r.amount : r.amount;
+
+   if(d.toDateString()===now.toDateString())
+     today+=value;
+
+   if((now-d)/(1000*60*60*24)<7)
+     week+=value;
+
+   if(
+      d.getMonth()===now.getMonth() &&
+      d.getFullYear()===now.getFullYear()
+   )
+     month+=value;
+
+   if(!categoryMap[r.category])
+      categoryMap[r.category]=0;
+
+   categoryMap[r.category]+=r.amount;
+
+   html+=`
+   <div class="record">
+      <div><strong>${r.note||"未命名"}</strong></div>
+      <div>${r.category}</div>
+      <div class="money">
+      ${r.type==="income"?"🟢":"🔴"}
+      NT$${r.amount}
+      </div>
+      <div class="small">
+      ${new Date(r.date).toLocaleString()}
+      </div>
+
+      <div class="row">
+        <button class="edit" onclick="editRecord(${r.id})">修改</button>
+        <button class="delete" onclick="deleteRecord(${r.id})">刪除</button>
+      </div>
+   </div>`;
+ });
+
+ document.getElementById("records").innerHTML=
+   html || "尚無資料";
+
+ document.getElementById("stats").innerHTML=`
+ <div class="stat">今日：NT$ ${today}</div>
+ <div class="stat">本週：NT$ ${week}</div>
+ <div class="stat">本月：NT$ ${month}</div>
+ `;
+
+ let catHtml="";
+
+ for(let key in categoryMap){
+   catHtml+=`
+   <div>${key}：NT$ ${categoryMap[key]}</div>
+   `;
+ }
+
+ document.getElementById("categoryStats").innerHTML=
+   catHtml || "尚無資料";
+}
+
+function exportCSV(){
+
+ let csv="類型,金額,分類,備註,日期\n";
+
+ data.forEach(r=>{
+   csv+=`${r.type},${r.amount},${r.category},${r.note},${r.date}\n`;
+ });
+
+ let blob=new Blob([csv],{
+   type:"text/csv;charset=utf-8;"
+ });
+
+ let a=document.createElement("a");
+
+ a.href=URL.createObjectURL(blob);
+
+ a.download="expense-data.csv";
+
+ a.click();
+}
+
+render();
+
+</script>
+
+</body>
+</html>
