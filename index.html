@@ -161,15 +161,67 @@ button{
 <script>
 
 let editId=null;
+let data=[];
 
-let data=JSON.parse(localStorage.getItem("expenses")||"[]");
+// ⚡ 1. 初始化 IndexedDB 資料庫
+const dbName = "ExpenseTrackerDB";
+const storeName = "expenses";
+let db;
 
-function saveData(){
- localStorage.setItem("expenses",JSON.stringify(data));
+const request = indexedDB.open(dbName, 1);
+
+request.onupgradeneeded = function(e) {
+  let dbInstance = e.target.result;
+  if (!dbInstance.objectStoreNames.contains(storeName)) {
+    dbInstance.createObjectStore(storeName, { keyPath: "id" });
+  }
+};
+
+request.onsuccess = function(e) {
+  db = e.target.result;
+  loadDataFromDB(); // 資料庫開啟成功後，讀取舊資料
+};
+
+request.onerror = function(e) {
+  console.error("IndexedDB 開啟失敗，降級使用 LocalStorage");
+  data = JSON.parse(localStorage.getItem("expenses") || "[]");
+  render();
+};
+
+// ⚡ 2. 從 IndexedDB 讀取全部資料的函式
+function loadDataFromDB() {
+  const transaction = db.transaction([storeName], "readonly");
+  const store = transaction.objectStore(storeName);
+  const getAllRequest = store.getAll();
+
+  getAllRequest.onsuccess = function() {
+    data = getAllRequest.result || [];
+    // 確保資料按時間排序（舊到新），維持跟您原本一致的邏輯
+    data.sort((a, b) => a.id - b.id);
+    render();
+  };
+}
+
+// ⚡ 3. 將整組資料同步寫入 IndexedDB 與備份的函式
+function saveData() {
+  // 同步備份到原本的 LocalStorage
+  localStorage.setItem("expenses", JSON.stringify(data));
+
+  if (!db) return;
+  
+  // 清空資料庫並重新寫入最新狀態（最穩妥的整組同步做法）
+  const transaction = db.transaction([storeName], "readwrite");
+  const store = transaction.objectStore(storeName);
+  
+  const clearRequest = store.clear();
+  clearRequest.onsuccess = function() {
+    data.forEach(item => {
+      store.add(item);
+    });
+  };
 }
 
 function saveRecord(){
-
  let amount=parseFloat(document.getElementById("amount").value);
 
  if(!amount){
@@ -203,7 +255,6 @@ function saveRecord(){
 }
 
 function editRecord(id){
-
  let r=data.find(x=>x.id===id);
 
  editId=id;
@@ -220,7 +271,6 @@ function editRecord(id){
 }
 
 function deleteRecord(id){
-
  if(!confirm("確定刪除？")) return;
 
  data=data.filter(x=>x.id!==id);
@@ -231,7 +281,6 @@ function deleteRecord(id){
 }
 
 function render(){
-
  let keyword=document.getElementById("search").value.toLowerCase();
 
  let list=data.filter(x=>
@@ -243,15 +292,11 @@ function render(){
  let month=0;
 
  let categoryMap={};
-
  let html="";
-
  let now=new Date();
 
  list.slice().reverse().forEach(r=>{
-
    let d=new Date(r.date);
-
    let value=r.type==="expense" ? -r.amount : r.amount;
 
    if(d.toDateString()===now.toDateString())
@@ -290,8 +335,7 @@ function render(){
    </div>`;
  });
 
- document.getElementById("records").innerHTML=
-   html || "尚無資料";
+ document.getElementById("records").innerHTML=html || "尚無資料";
 
  document.getElementById("stats").innerHTML=`
  <div class="stat">今日：NT$ ${today}</div>
@@ -300,19 +344,14 @@ function render(){
  `;
 
  let catHtml="";
-
  for(let key in categoryMap){
-   catHtml+=`
-   <div>${key}：NT$ ${categoryMap[key]}</div>
-   `;
+   catHtml+=`<div>${key}：NT$ ${categoryMap[key]}</div>`;
  }
 
- document.getElementById("categoryStats").innerHTML=
-   catHtml || "尚無資料";
+ document.getElementById("categoryStats").innerHTML=catHtml || "尚無資料";
 }
 
 function exportCSV(){
-
  let csv="類型,金額,分類,備註,日期\n";
 
  data.forEach(r=>{
@@ -324,15 +363,12 @@ function exportCSV(){
  });
 
  let a=document.createElement("a");
-
  a.href=URL.createObjectURL(blob);
-
  a.download="expense-data.csv";
-
  a.click();
 }
 
-render();
+// 注意：原先直接執行的 render() 改由 IndexedDB 成功讀取後自動觸發
 
 </script>
 
