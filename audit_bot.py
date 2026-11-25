@@ -38,8 +38,22 @@ def parse_to_taipei(date_val) -> datetime.datetime | None:
     return dt.astimezone(TZ)
 
 
-def calc_stats_like_app(records: list[dict], now_tw: datetime.datetime) -> dict:
-    """對齊記帳本統計規則：支出為負、收入為正；分類統計加總金額"""
+def resolve_audit_cutoff(now_tw: datetime.datetime) -> datetime.datetime:
+    """
+    決定結算截止時間（台灣時區 23:00）。
+    若排程延遲至隔日凌晨（00:00 ~ 05:59）才執行，自動回推前一天的 23:00。
+    """
+    if now_tw.hour < 6:
+        report_date = (now_tw - datetime.timedelta(days=1)).date()
+    else:
+        report_date = now_tw.date()
+
+    naive_cutoff = datetime.datetime.combine(report_date, datetime.time(23, 0, 0))
+    return TZ.localize(naive_cutoff)
+
+
+def calc_stats_like_app(records: list[dict], cutoff_dt: datetime.datetime) -> dict:
+    """對齊記帳本統計規則（截至 cutoff_dt 為止）：支出為負、收入為正；分類統計加總金額"""
     today = 0.0
     week = 0.0
     month = 0.0
@@ -50,6 +64,10 @@ def calc_stats_like_app(records: list[dict], now_tw: datetime.datetime) -> dict:
         if not dt_tw:
             continue
 
+        # 僅統計截至結算時間（例如 23:00）以前的紀錄
+        if dt_tw > cutoff_dt:
+            continue
+
         try:
             amt = float(r.get("amount") or 0)
         except (TypeError, ValueError):
@@ -57,16 +75,17 @@ def calc_stats_like_app(records: list[dict], now_tw: datetime.datetime) -> dict:
 
         value = -amt if r.get("type") == "expense" else amt
 
-        # 今日（台灣時區同一天）
-        if dt_tw.date() == now_tw.date():
+        # 今日（結算基準日同一天）
+        if dt_tw.date() == cutoff_dt.date():
             today += value
 
-        # 本週（與記帳本一致：7 天內）
-        if (now_tw - dt_tw).total_seconds() < 7 * 86400:
+        # 本週（與記帳本一致：截至 cutoff_dt 前 7 天內）
+        diff_seconds = (cutoff_dt - dt_tw).total_seconds()
+        if 0 <= diff_seconds < 7 * 86400:
             week += value
 
-        # 本月（台灣時區同年同月）
-        if dt_tw.year == now_tw.year and dt_tw.month == now_tw.month:
+        # 本月（結算基準日同年同月）
+        if dt_tw.year == cutoff_dt.year and dt_tw.month == cutoff_dt.month:
             month += value
 
         # 分類統計
@@ -81,10 +100,10 @@ def calc_stats_like_app(records: list[dict], now_tw: datetime.datetime) -> dict:
     }
 
 
-def format_report(stats: dict, now_tw: datetime.datetime) -> str:
+def format_report(stats: dict, cutoff_dt: datetime.datetime, now_tw: datetime.datetime) -> str:
     """排版對齊記帳本畫面的統計與分類統計"""
-    date_label = now_tw.strftime("%Y-%m-%d")
-    month_label = now_tw.strftime("%Y-%m")
+    date_label = cutoff_dt.strftime("%Y-%m-%d")
+    month_label = cutoff_dt.strftime("%Y-%m")
     lines = [
         f"統計 截至 {date_label} 23:00 止",
         f"今日：NT$ {stats['today']:g}",
@@ -99,6 +118,12 @@ def format_report(stats: dict, now_tw: datetime.datetime) -> str:
             lines.append(f"{cat}：NT$ {val:g}")
     else:
         lines.append("尚無資料")
+
+    # 若實際執行時間晚於結算時間超過 15 分鐘，附註實際產生時間方便辨識
+    delay_minutes = (now_tw - cutoff_dt).total_seconds() / 60
+    if delay_minutes > 15:
+        lines.append("")
+        lines.append(f"（註：此報表於 {now_tw.strftime('%Y-%m-%d %H:%M')} 延遲產出）")
 
     return "\n".join(lines)
 
@@ -152,8 +177,9 @@ def main():
     records = [doc.to_dict() for doc in docs if doc.exists]
 
     now_tw = datetime.datetime.now(TZ)
-    stats = calc_stats_like_app(records, now_tw)
-    msg = format_report(stats, now_tw)
+    cutoff_dt = resolve_audit_cutoff(now_tw)
+    stats = calc_stats_like_app(records, cutoff_dt)
+    msg = format_report(stats, cutoff_dt, now_tw)
     send_line_push(msg)
 
 
