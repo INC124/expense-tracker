@@ -2,8 +2,8 @@ name: Daily Financial Audit Bot
 
 on:
   schedule:
-    # 台灣時間 (UTC+8) 每天 23:00 對應 UTC 15:00
-    - cron: "0 15 * * *"
+    # 台灣時間 (UTC+8) 每天 22:53 對應 UTC 14:53
+    - cron: "53 14 * * *"
   workflow_dispatch:
 
 jobs:
