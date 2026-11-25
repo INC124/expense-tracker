@@ -1,14 +1,16 @@
 name: Daily Financial Audit Bot
 
 on:
-  schedule:
-    # 台灣時間 (UTC+8) 每天 22:53 對應 UTC 14:53
-    - cron: "53 14 * * *"
   workflow_dispatch:
+  schedule:
+    # 備援排程：台灣時間 (UTC+8) 每天 23:07 對應 UTC 15:07（錯開整點尖峰）
+    - cron: "7 15 * * *"
 
 jobs:
   run-audit-bot:
     runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Taipei
 
     steps:
       - name: Checkout repository
